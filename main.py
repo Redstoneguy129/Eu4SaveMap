@@ -1,11 +1,26 @@
 import typer
+from typing import Optional, List
+from typing_extensions import Annotated
 from zipfile import ZipFile
 from io import TextIOWrapper
-import json
-from PIL import Image, ImageDraw, ImageColor
-import numpy as np
+from pathlib import Path
+from enum import Enum
+import json as jjson
+from PIL import Image
+from platform import system
+from os.path import expanduser as userdocs
+import shutil
+from os import listdir
 
+from util import nationalcolour, colourvariant, get_subjects, get_powers, get_players
 from CWTools import cwformat, cwparse
+
+app = typer.Typer()
+
+
+class Overlays(str, Enum):
+    classic = "classic"
+    parchment = "parchment"
 
 
 def extract(save: str):
@@ -16,13 +31,13 @@ def extract(save: str):
             res_dict = cwformat(res)
             with open("out.json", 'w', encoding='utf-8') as outf:
                 print("Writing results to file...")
-                outf.write(json.dumps(res_dict, indent=2, ensure_ascii=False))
+                outf.write(jjson.dumps(res_dict, indent=2, ensure_ascii=False))
 
 
 def read(nation: str, subjects: bool):
     with open('out.json', 'r', encoding="iso-8859-1") as input_file:
         data = input_file.read()
-        structure = json.loads(data)
+        structure = jjson.loads(data)
         nation_provinces = structure["countries"][nation]["owned_provinces"]
         subjects_provinces = []
         if subjects:
@@ -33,36 +48,9 @@ def read(nation: str, subjects: bool):
         return nation_provinces, subjects_provinces
 
 
-def rgb2hex(r, g, b):
-    return "#{:02x}{:02x}{:02x}".format(r, g, b)
-
-
-def hex2rgb(hexcode):
-    return ImageColor.getcolor(hexcode, "RGB")
-
-
-def color_variant(r, g, b, brightness_offset=1):
-    hex_color = rgb2hex(r, g, b)
-    """ takes a color like #87c95f and produces a lighter or darker variant """
-    if len(hex_color) != 7:
-        raise Exception("Passed %s into color_variant(), needs to be in #87c95f format." % hex_color)
-    rgb_hex = [hex_color[x:x + 2] for x in [1, 3, 5]]
-    new_rgb_int = [int(hex_value, 16) + brightness_offset for hex_value in rgb_hex]
-    new_rgb_int = [min([255, max([0, i])]) for i in new_rgb_int]  # make sure new values are between 0 and 255
-    # hex() produces "0x88", we want just "88"
-    return hex2rgb("#" + "".join([hex(i)[2:] for i in new_rgb_int]))
-
-
-def get_nation_colour(nation: str):
-    with open('out.json', 'r', encoding="iso-8859-1") as input_file:
-        data = input_file.read()
-        structure = json.loads(data)
-        return tuple(structure["countries"][nation]["colors"]["country_color"])
-
-
 def map_paint(nation: str):
     nationl, subject = read(nation, True)
-    nr, ng, nb = get_nation_colour(nation)
+    nr, ng, nb = nationalcolour(nation)
     im = Image.open('provinces.bmp')
     rgb_im = im.convert('RGBA')
     im_new = Image.new(mode="RGBA", size=(rgb_im.size[0], rgb_im.size[1]))
@@ -80,7 +68,8 @@ def map_paint(nation: str):
                         for h in range(0, rgb_im.size[1]):
                             data = rgb_n.getpixel((w, h))
                             if data[0] == r and data[1] == g and data[2] == b:
-                                print("Found nation colour of " + str(nr) + " " + str(ng) + " " + str(nb) + " at location W:" + str(w) + "-H:" + str(h) + "-PROV:" + str(prov_id))
+                                print("Found nation colour of " + str(nr) + " " + str(ng) + " " + str(
+                                    nb) + " at location W:" + str(w) + "-H:" + str(h) + "-PROV:" + str(prov_id))
                                 rgb_n.putpixel((w, h), (nr, ng, nb))
                             else:
                                 rgb_n.putpixel((w, h), (255, 255, 255, 0))
@@ -98,8 +87,9 @@ def map_paint(nation: str):
                             for h in range(0, rgb_im.size[1]):
                                 data = rgb_n.getpixel((w, h))
                                 if data[0] == r and data[1] == g and data[2] == b:
-                                    sr, sg, sb = color_variant(nr, ng, nb, brightness_offset=40)
-                                    print("Found subject colour of " + str(sr) + " " + str(sg) + " " + str(sb) + " at location W:" + str(w) + "-H:" + str(h) + "-PROV:" + str(prov_id))
+                                    sr, sg, sb = colourvariant(nr, ng, nb, brightness_offset=40)
+                                    print("Found subject colour of " + str(sr) + " " + str(sg) + " " + str(
+                                        sb) + " at location W:" + str(w) + "-H:" + str(h) + "-PROV:" + str(prov_id))
                                     rgb_n.putpixel((w, h), (sr, sg, sb))
                                 else:
                                     rgb_n.putpixel((w, h), (255, 255, 255, 0))
@@ -109,9 +99,54 @@ def map_paint(nation: str):
     im_new.save('provs/' + nation + '.png')
 
 
-def main(save: str, nation: str, subjects: bool, provinces: str):
-    map_paint(nation)
+def get_map_dir():
+    match system():
+        case "Linux":
+            print("LINUX!")
+        case _:
+            map_dir = ""
+            for i in listdir(userdocs("~/Documents/Paradox Interactive/Europa Universalis IV/mod")):
+                if "ugc" in i:
+                    file = open(userdocs("~/Documents/Paradox Interactive/Europa Universalis IV/mod/" + i), "r")
+                    ugc = file.read().split("\"")
+                    map_dir = ""
+                    for mods in ugc:
+                        if "steamapps" in mods:
+                            map_dir = mods[:abs(mods.find("workshop"))] + "common/Europa Universalis IV/map/"
+                            break
+                    break
+            return map_dir
+
+
+@app.command()
+def generate(name: str = "vanilla",
+             provinces: Annotated[Optional[Path], typer.Option()] = None,
+             definitions: Annotated[Optional[Path], typer.Option()] = None):
+    print("Generating " + name + " Provinces")
+    if provinces is None:
+        provinces = Path(get_map_dir() + "provinces.bmp")
+    if definitions is None:
+        definitions = Path(get_map_dir() + "definition.csv")
+    im = Image.open(provinces)
+    rgb_im = im.convert('RGBA')
+    rgb_im.save('provs/provinces.png')
+    shutil.copyfile(definitions, 'provs/definition.txt')
+
+
+@app.command()
+def paint(save: Path,
+          tag: List[str] = None,
+          overlay: Overlays = Overlays.classic,
+          provinces: str = "vanilla",
+          all_powers: bool = False):
+    print("Painting " + save.name)
+    json = jjson.loads(open("out.json", "r", encoding="iso-8859-1").read())
+    if all_powers:
+        tag.extend(get_powers(json))
+    if not tag:
+        tag.extend(get_players(json))
+    print(tag)
 
 
 if __name__ == "__main__":
-    typer.run(main)
+    app()
