@@ -279,4 +279,5 @@ pip-selfcheck.json
 *.json
 *.csv
 *.bmp
+*.png
 provs

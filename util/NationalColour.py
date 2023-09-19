@@ -1,5 +1,6 @@
-from PIL import ImageColor
 import json
+
+from PIL import ImageColor
 
 
 def rgb2hex(r, g, b):

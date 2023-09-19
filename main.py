@@ -1,19 +1,20 @@
-import typer
-from typing import Optional, List
-from typing_extensions import Annotated
-from zipfile import ZipFile
-from io import TextIOWrapper
-from pathlib import Path
-from enum import Enum
 import json as jjson
-from PIL import Image
-from platform import system
-from os.path import expanduser as userdocs
-import shutil
+from enum import Enum
+from io import TextIOWrapper
 from os import listdir
+from os.path import expanduser as userdocs
+from pathlib import Path
+from platform import system
+from typing import Optional, List
+from zipfile import ZipFile
 
-from util import nationalcolour, colourvariant, get_subjects, get_powers, get_players
+import typer
+from PIL import Image
+from typing_extensions import Annotated
+
 from CWTools import cwformat, cwparse
+from generator import generateprovinces
+from util import nationalcolour, colourvariant, get_powers, get_players, get_land_provinces
 
 app = typer.Typer()
 
@@ -48,55 +49,38 @@ def read(nation: str, subjects: bool):
         return nation_provinces, subjects_provinces
 
 
-def map_paint(nation: str):
-    nationl, subject = read(nation, True)
+def paint_land(province_map, land_provinces):
+    im_new = Image.new(mode="RGBA", size=(5632, 2048), color=(96, 123, 156))
+    for prov in land_provinces:
+        if str(prov) in province_map:
+            pixels = province_map[str(prov)]
+            for wh in pixels:
+                im_new.putpixel(wh, (135, 130, 130))
+    return im_new
+
+
+def map_paint(nation: str, province_map):
+    nationl, subjects = read(nation, True)
     nr, ng, nb = nationalcolour(nation)
-    im = Image.open('provinces.bmp')
-    rgb_im = im.convert('RGBA')
-    im_new = Image.new(mode="RGBA", size=(rgb_im.size[0], rgb_im.size[1]))
-    with open("definition.csv", "r") as defi:
-        for i in defi:
-            if ";x;x" not in i:
-                prov_id = i.split(";")[0]
-                if int(prov_id) in nationl:
-                    print("preparing to add province " + prov_id + " to " + nation)
-                    prov = i.replace("\n", "")
-                    split_prov = prov.split(";")
-                    r, g, b = int(split_prov[1]), int(split_prov[2]), int(split_prov[3])
-                    rgb_n = rgb_im.copy()
-                    for w in range(0, rgb_im.size[0]):
-                        for h in range(0, rgb_im.size[1]):
-                            data = rgb_n.getpixel((w, h))
-                            if data[0] == r and data[1] == g and data[2] == b:
-                                print("Found nation colour of " + str(nr) + " " + str(ng) + " " + str(
-                                    nb) + " at location W:" + str(w) + "-H:" + str(h) + "-PROV:" + str(prov_id))
-                                rgb_n.putpixel((w, h), (nr, ng, nb))
-                            else:
-                                rgb_n.putpixel((w, h), (255, 255, 255, 0))
-                    rgb_n.save('provs/' + split_prov[4] + '.png')
-                    im_new = Image.alpha_composite(im_new, rgb_n)
-                    print("added province " + prov_id + " to " + nation)
-                for subnat in subject:
-                    if int(prov_id) in subnat:
-                        print("preparing to add SUBJECT province " + prov_id + " to " + nation)
-                        prov = i.replace("\n", "")
-                        split_prov = prov.split(";")
-                        r, g, b = int(split_prov[1]), int(split_prov[2]), int(split_prov[3])
-                        rgb_n = rgb_im.copy()
-                        for w in range(0, rgb_im.size[0]):
-                            for h in range(0, rgb_im.size[1]):
-                                data = rgb_n.getpixel((w, h))
-                                if data[0] == r and data[1] == g and data[2] == b:
-                                    sr, sg, sb = colourvariant(nr, ng, nb, brightness_offset=40)
-                                    print("Found subject colour of " + str(sr) + " " + str(sg) + " " + str(
-                                        sb) + " at location W:" + str(w) + "-H:" + str(h) + "-PROV:" + str(prov_id))
-                                    rgb_n.putpixel((w, h), (sr, sg, sb))
-                                else:
-                                    rgb_n.putpixel((w, h), (255, 255, 255, 0))
-                        rgb_n.save('provs/' + split_prov[4] + '.png')
-                        im_new = Image.alpha_composite(im_new, rgb_n)
-                        print("added SUBJECT province " + prov_id + " to " + nation)
-    im_new.save('provs/' + nation + '.png')
+    im_new = Image.new(mode="RGBA", size=(5632, 2048))
+    wee = []
+    for prov in nationl:
+        if str(prov) in province_map:
+            pixels = province_map[str(prov)]
+            for wh in pixels:
+                wee.append(wh)
+                im_new.putpixel(wh, (nr, ng, nb))
+            del province_map[str(prov)]
+    for subject in subjects:
+        for prov in subject:
+            if str(prov) in province_map:
+                pixels = province_map[str(prov)]
+                for wh in pixels:
+                    wee.append(wh)
+                    sr, sg, sb = colourvariant(nr, ng, nb, brightness_offset=20)
+                    im_new.putpixel(wh, (sr, sg, sb))
+                del province_map[str(prov)]
+    return im_new
 
 
 def get_map_dir():
@@ -127,10 +111,10 @@ def generate(name: str = "vanilla",
         provinces = Path(get_map_dir() + "provinces.bmp")
     if definitions is None:
         definitions = Path(get_map_dir() + "definition.csv")
-    im = Image.open(provinces)
-    rgb_im = im.convert('RGBA')
-    rgb_im.save('provs/provinces.png')
-    shutil.copyfile(definitions, 'provs/definition.txt')
+    saveGen = open(name + ".json", "w")
+    jjson.dump(generateprovinces(provinces, definitions), saveGen)
+    saveGen.close()
+    print("Saved Province Gen to filesystem")
 
 
 @app.command()
@@ -146,6 +130,16 @@ def paint(save: Path,
     if not tag:
         tag.extend(get_players(json))
     print(tag)
+    tag_paints = []
+    prov = open(provinces + ".json", "r")
+    prov_data = jjson.load(prov)
+    land_provinces = get_land_provinces(json)
+    for i in tag:
+        tag_paints.append(map_paint(i.upper(), prov_data))
+    im = paint_land(prov_data, land_provinces)
+    for img in tag_paints:
+        im = Image.alpha_composite(im, img)
+    im.save('end' + '.png')
 
 
 if __name__ == "__main__":

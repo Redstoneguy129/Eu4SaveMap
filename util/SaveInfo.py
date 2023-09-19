@@ -23,3 +23,12 @@ def get_powers(json):
 
 def get_players(json):
     return json["players_countries"][1::2]
+
+
+def get_land_provinces(json):
+    land_prov = []
+    for country in json["countries"]:
+        if "owned_provinces" in json["countries"][country]:
+            land_prov.extend(json["countries"][country]["owned_provinces"])
+    print(land_prov)
+    return land_prov

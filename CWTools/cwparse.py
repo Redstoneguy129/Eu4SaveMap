@@ -1,6 +1,7 @@
 import re
-import pyparsing as pp
 from datetime import datetime
+
+import pyparsing as pp
 
 
 def _preprocess(txt):
