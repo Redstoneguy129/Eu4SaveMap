@@ -38,12 +38,10 @@ def parse(txt):
     # Account for "negative dates" and things like "1.1.1"
     date_type = pp.Regex(r"\-?(?P<year>\d{1,4})\.(?P<month>\d\d?)\.(?P<day>\d\d?)")
     date_type.setParseAction(convert_to_date).setName('date_type')
-    # TODO Check if dateu is needed
 
     pp.dblQuotedString.setParseAction(pp.removeQuotes)
     pp.dblQuotedString.setName('dblQuotedString')
     unQuotedString = pp.Word(pp.alphanums + pp.alphas8bit + "_-.:?")  # 8bit for parsing accented characters
-    # I had to put : there just for Stellaris saves
     unQuotedString.setName('unQuotedString')
 
     data = (date_type | real | integer | yes | no | pp.dblQuotedString | unQuotedString)

@@ -9,7 +9,7 @@ def chunks(lst, n):
 
 
 def generate(provinces: Path, definitions: Path):
-    definitions_fs = open(definitions, "r")
+    definitions_fs = open(definitions, "r", encoding="iso-8859-1")
     definitions_all = definitions_fs.readlines()[1:]
     provinces_img = Image.open(provinces)
     provinces_rgba = provinces_img.convert('RGBA')
