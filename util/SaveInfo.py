@@ -30,5 +30,12 @@ def get_land_provinces(json):
     for country in json["countries"]:
         if "owned_provinces" in json["countries"][country]:
             land_prov.extend(json["countries"][country]["owned_provinces"])
-    print(land_prov)
     return land_prov
+
+
+def get_wasteland_provinces(json):
+    wasteland_prov = []
+    for province in json["provinces"]:
+        if "base_tax" not in json["provinces"][province] and "patrol" not in json["provinces"][province]:
+            wasteland_prov.append(province.replace("-", ""))
+    return wasteland_prov

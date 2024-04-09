@@ -14,7 +14,7 @@ from typing_extensions import Annotated
 
 from CWTools import cwformat, cwparse
 from generator import generateprovinces
-from util import nationalcolour, colourvariant, get_powers, get_players, get_land_provinces
+from util import nationalcolour, colourvariant, get_powers, get_players, get_land_provinces, get_wasteland_provinces
 
 app = typer.Typer()
 
@@ -29,7 +29,7 @@ def extract(save: Path):
         with zipdata.open("gamestate", "r") as fid:
             gamedata = TextIOWrapper(fid, encoding='iso-8859-1').read()
             res = cwparse(gamedata)
-            print(res)
+            #print(res)
             res_dict = cwformat(res)
             with open("out.json", 'w', encoding='utf-8') as outf:
                 print("Writing results to file...")
@@ -50,9 +50,14 @@ def read(nation: str, subjects: bool):
         return nation_provinces, subjects_provinces
 
 
-def paint_land(province_map, land_provinces):
+def paint_land(province_map, land_provinces, wasteland_provinces):
     im_new = Image.new(mode="RGBA", size=(5632, 2048), color=(96, 123, 156))
     for prov in land_provinces:
+        if str(prov) in province_map:
+            pixels = province_map[str(prov)]
+            for wh in pixels:
+                im_new.putpixel(wh, (135, 130, 130))
+    for prov in wasteland_provinces:
         if str(prov) in province_map:
             pixels = province_map[str(prov)]
             for wh in pixels:
@@ -124,21 +129,22 @@ def paint(save: Path,
           overlay: Overlays = Overlays.classic,
           provinces: str = "vanilla",
           all_powers: bool = False):
-    extract(save)
+    if "out.json" not in listdir():
+        extract(save)
     print("Painting " + save.name)
     json = jjson.loads(open("out.json", "r", encoding="iso-8859-1").read())
     if all_powers:
         tag.extend(get_powers(json))
     if not tag:
         tag.extend(get_players(json))
-    print(tag)
+    #print(tag)
     tag_paints = []
     prov = open(provinces + ".json", "r")
     prov_data = jjson.load(prov)
     land_provinces = get_land_provinces(json)
     for i in tag:
         tag_paints.append(map_paint(i.upper(), prov_data))
-    im = paint_land(prov_data, land_provinces)
+    im = paint_land(prov_data, land_provinces, get_wasteland_provinces(json))
     for img in tag_paints:
         im = Image.alpha_composite(im, img)
     im.save('end' + '.png')
