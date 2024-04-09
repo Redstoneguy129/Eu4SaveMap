@@ -5,6 +5,7 @@ import pyparsing as pp
 
 
 def _preprocess(txt):
+    print("Starting pre process")
     txt = txt.replace("EU4txt", "", 1)  # Remove first line
     txt = re.sub(r"([A-Za-z0-9_.\-]+){",
                  r"\1={", txt)  # Solve phrases without equal sign
@@ -12,6 +13,7 @@ def _preprocess(txt):
                  r"\1=", txt, 0, re.MULTILINE)  # Unquote keys in phrases
     txt = re.sub(r"=\s*{", r"={", txt, 0, re.MULTILINE)  # Fix spaces
     txt = re.sub(r"^\s*{\s*\}", r"", txt, 0, re.MULTILINE)  # Hack for random empty objects start of the line
+    print("Pre processed")
     # If this breaks any further I'll break myself
     return txt
 

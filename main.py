@@ -24,11 +24,12 @@ class Overlays(str, Enum):
     parchment = "parchment"
 
 
-def extract(save: str):
+def extract(save: Path):
     with ZipFile(save, "r") as zipdata:
         with zipdata.open("gamestate", "r") as fid:
             gamedata = TextIOWrapper(fid, encoding='iso-8859-1').read()
             res = cwparse(gamedata)
+            print(res)
             res_dict = cwformat(res)
             with open("out.json", 'w', encoding='utf-8') as outf:
                 print("Writing results to file...")
@@ -123,6 +124,7 @@ def paint(save: Path,
           overlay: Overlays = Overlays.classic,
           provinces: str = "vanilla",
           all_powers: bool = False):
+    extract(save)
     print("Painting " + save.name)
     json = jjson.loads(open("out.json", "r", encoding="iso-8859-1").read())
     if all_powers:
